@@ -2,32 +2,40 @@ library(data.table)
 library(igraph)
 library(visNetwork)
 
-setwd('C:/Users/rmcgibony/Downloads/fec/')
+setwd('C:\Files\code\graph-fraud-detection')
 
-# Read data
-bike <- fread('C:/Users/rmcgibony/Downloads/2016-Q1-Trips-History-Data.csv', header=TRUE, verbose=TRUE)
-setnames(bike, c('duration', 'start_date', 'end_date', 'start_station', 'start_name', 'end_station', 'end_name', 'bike_id', 'member_type'))
-bike[, start_date2:=as.POSIXct(start_date, "%m")]
+# Data links are from http://www.fec.gov/finance/disclosure/ftpdet.shtml
 
-trips <- bike[, .(start_station, end_station, bike_id, duration)]
+# Download and unzip FEC data
+download.file("ftp://ftp.fec.gov/FEC/2014/cm14.zip", destfile="data/cm14.zip")
+download.file("ftp://ftp.fec.gov/FEC/2014/cn14.zip", destfile="data/cn14.zip")
+download.file("ftp://ftp.fec.gov/FEC/2014/pas214.zip", destfile="data/pas214.zip")
 
-stations <- data.table()
+unzip('data/cm14.zip', exdir='data')
+unzip('data/cn14.zip', exdir='data')
+unzip('data/pas214.zip', exdir='data')
 
 # Read committee data
-comm <- fread('cm.txt', sep='|', header=FALSE, verbose=FALSE,
+comm <- fread('data/cm.txt', sep='|', header=FALSE, verbose=FALSE,
             select=c('V1', 'V2'))
 setnames(comm, c('comm_id', 'comm_name'))
 setkey(comm, comm_id)
-
+comm
 
 # Read candidate data
-cand <- fread('cn.txt', sep='|', header=FALSE, verbose=TRUE,
+cand_full <- fread('data/cn.txt', sep='|', header=FALSE, verbose=FALSE,
               select=c('V1', 'V2', 'V3', 'V5', 'V6', 'V8'))
-setnames(cand, c('cand_id', 'cand_name', 'party', 'state', 'office', 'status'))
-setkey(cand, cand_id)
+setnames(cand_full, c('cand_id', 'cand_name', 'party', 'state', 'office', 'status'))
+setkey(cand_full, cand_id)
+cand_full
+
+cand_full[, table(office)]
 
 # Limit to Senate candidates
-cand <- cand[office=='S',]
+cand <- cand_full[office=='S',]
+
+mytable <- cand[, table(party)]
+sort(mytable, decreasing=TRUE)
 
 # Collapse all third-party candidates into a single group
 cand[!party %in% c('DEM','REP'), party:='OTH']
@@ -37,9 +45,11 @@ cand[!party %in% c('DEM','REP'), party:='OTH']
 # contr_explore <- fread('itpas2.txt', sep='|', header=FALSE)
 # setnames(contr_explore, names(contr_header))
 
-contr_all <- fread('itpas2.txt', sep='|', header=FALSE, 
-                select=c('V1', 'V17', 'V15'), na.strings="")
-setnames(contr_all, c('comm_id', 'cand_id', 'amount'))
+contr_all <- fread('data/itpas2.txt', sep='|', header=FALSE, 
+                select=c('V1', 'V15', 'V17'), na.strings="")
+setnames(contr_all, c('comm_id', 'amount', 'cand_id'))
+setcolorder(contr_all, c('comm_id', 'cand_id', 'amount'))
+contr_all
 
 # Aggregate contributions to distinct committee-candidate pairs
 contr <- contr_all[, .(amount=sum(amount), count=.N), by=.(comm_id, cand_id)]
@@ -55,19 +65,18 @@ contr <- contr[!is.na(cand_id),]
 # Limit contributions to our defined set of candidates
 contr <- contr[cand_id %in% cand[, cand_id]]
 
-committee_counts <- contr[, .(count=.N), by=comm_id]
+committee_counts <- contr[, .(num_candidates=.N), by=comm_id]
 cand_totals <- contr[, .(total=sum(amount)), by=cand_id]
 setkey(cand_totals, cand_id)
 
 
-# Exclude committees that gave to at least X candidates, to reduce total relationships?
-contr <- contr[comm_id %in% committee_counts[count<=10, comm_id]]
+# Exclude committees that gave to more than 5 candidates, to reduce total relationships
+contr <- contr[comm_id %in% committee_counts[num_candidates<=5, comm_id]]
 
 # Add candidate count 
 
 # Add total contribution totals to candidate attributes
-cand <- cand_totals[cand]
-cand <- cand[!is.na(total),]
+cand <- cand_totals[cand, nomatch=0]
 
 # Include only candidates who received at least $100K in contributions
 # contr <- contr[cand_id %in% cand_totals[total>=1e5, cand_id]]
@@ -108,6 +117,9 @@ cl[, size:=.N, by=cl]
 main_cl <- cl[size==max(size), unique(cl)]
 
 main_cl <- induced_subgraph(ig, vids=cl[size==max(size),id])
+other_cl <- induced_subgraph(ig, vids=cl[size < max(size),id])
+
+V(main_cl)$weight <- V(main_cl)$total
 
 cand_net <- bipartite.projection(main_cl, which='true')
 
