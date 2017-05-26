@@ -71,9 +71,7 @@ setkey(cand_totals, cand_id)
 
 
 # Exclude committees that gave to more than 5 candidates, to reduce total relationships
-contr <- contr[comm_id %in% committee_counts[num_candidates<=5, comm_id]]
-
-# Add candidate count 
+contr <- contr[comm_id %in% committee_counts[num_candidates <= 5, comm_id]]
 
 # Add total contribution totals to candidate attributes
 cand <- cand_totals[cand, nomatch=0]
@@ -91,91 +89,67 @@ nodes <- rbindlist(list(cand[, .(id=cand_id, type=TRUE, cand_name, party, state,
                    fill=TRUE)
 nodes <- nodes[id %in% contr_list]
 
-ig <- graph.data.frame(contr, vertices=nodes, directed=TRUE)
-summary(ig)
+contr_net <- graph_from_data_frame(contr, vertices=nodes, directed=TRUE)
+summary(contr_net)
 
-write.graph(ig, file='contributions.GraphML', format="graphml")
+# See how many connected components are in the network
+no.clusters(contr_net)
 
-no.clusters(ig)
-
-cand_net <- bipartite.projection(ig, which='true')
+cand_net <- bipartite.projection(contr_net, which='true')
 
 write.graph(cand_net, file='candidates.GraphML', format="graphml")
 
-# cl <- clusters(ig)
+comps <- components(contr_net)[[1]]
 
-# ig2 <- bipartite.projection(ig)
-
-cl <- clusters(ig)[[1]]
-
-cl <- data.table(id=names(cl),cl)
-cl[, cl:=as.numeric(cl)]
-setkey(cl,cl)
-cl[, size:=.N, by=cl]
+comps <- data.table(id=names(comps), comp_no=comps)
+comps[, comp_no:=as.numeric(comp_no)]
+setkey(comps, comp_no)
+comps[, size:=.N, by=comp_no]
 
 
-main_cl <- cl[size==max(size), unique(cl)]
+main_cl <- comps[size==max(size), unique(comp_no)]
 
-main_cl <- induced_subgraph(ig, vids=cl[size==max(size),id])
-other_cl <- induced_subgraph(ig, vids=cl[size < max(size),id])
+main_cl <- induced_subgraph(contr_net, vids=comps[size==max(size), id])
+other_cl <- induced_subgraph(contr_net, vids=comps[size < max(size),id])
 
-V(main_cl)$weight <- V(main_cl)$total
 
 cand_net <- bipartite.projection(main_cl, which='true')
 
 quantile(V(cand_net)$total, na.rm=TRUE)
 
-# Limit to candidates with at least $100K in contributions
-# cand_net <- delete.vertices(cand_net, V(cand_net)[total<5e6])
+# Limit to candidates with at least $500K in contributions
+g <- induced_subgraph(cand_net, vids=V(cand_net)[which(V(cand_net)$total > 5e6)])
 
-V(cand_net)$label <- V(cand_net)$cand_name
-V(cand_net)$color <- V(cand_net)$party # assign the party attribute as the vertex color
-V(cand_net)$color <- gsub("DEM","blue", V(cand_net)$color) 
-V(cand_net)$color <- gsub("REP","red", V(cand_net)$color) 
-V(cand_net)$color <- gsub("OTH","gray", V(cand_net)$color) 
+V(g)$color <- V(g)$party # assign the party attribute as the vertex color
+V(g)$color <- gsub("DEM","blue", V(g)$color) 
+V(g)$color <- gsub("REP","red", V(g)$color) 
+V(g)$color <- gsub("OTH","gray", V(g)$color) 
 
-V(cand_net)$size <- log(V(cand_net)$total)
+V(g)$size <- log(V(g)$total)/2
 
-plot(cand_net, vertex.shape="circle", vertex.label=NA, edge.arrow.size=0, layout=layout.fruchterman.reingold(cand_net) )
+plot(g, vertex.shape="circle", vertex.label=V(g)$cand_name, edge.arrow.size=0, layout=layout.fruchterman.reingold(g) )
 
-# Plot network
-visnet <- toVisNetworkData(cand_net)
+# Plot network using visNetwork
+visnet <- toVisNetworkData(g)
+visnet$nodes$label <- visnet$nodes$cand_name
 visNetwork(nodes=visnet$nodes, edges=visnet$edges) %>% visPhysics(solver="barnesHut", timestep=0.2) %>% 
-  visNodes(color = visnet$color, size=visnet$size, label=visnet$cand_name) %>% visEdges(color = "#C3C3C3", width=1)
+  visEdges(color = "#C3C3C3", width=1)
 
-
-
-library("networkD3")
-
-
-# Remove all nodes with fewer than 50 edges
-# deg <- degree(gs, mode = "out")
-# idx <- names(which(deg > 50))
-# gn <- induced.subgraph(gs, idx)
 
 # Extract into data frame and plot
-gd <- get.data.frame(cand_net, what = "edges")
-simpleNetwork(gd, fontSize = 12)
-
+# gd <- get.data.frame(cand_net, what = "edges")
 
 
 # Get node attributes
-cand.degrees <- degree(cand_net, v=V(cand_net), mode="all")
-cand.betweenness <- betweenness(cand_net, v=V(cand_net))
-cand.pagerank <- page.rank(cand_net, v=V(cand_net))$vector
+cand_attributes <- data.table(
+  cand_id = V(cand_net)$name,
+  cand_name = V(cand_net)$cand_name,
+  degree = degree(cand_net, v=V(cand_net), mode="all"),
+  btw = betweenness(cand_net, v=V(cand_net)),
+  pagerank = page.rank(cand_net, v=V(cand_net))$vector)
 
-temp <- data.frame(cand_id=names(cand.degrees), degree=cand.degrees, row.names=NULL)
-temp <- data.table(temp)
+cand_attributes[order(-degree)]
+cand_attributes[order(-btw)]
+cand_attributes[order(-pagerank)]
 
-temp2 <- data.frame(cand_id=names(cand.betweenness), btw=cand.betweenness, row.names=NULL)
-temp2 <- data.table(temp2)
 
-temp3 <- data.frame(cand_id=names(cand.pagerank), pr=cand.pagerank, row.names=NULL)
-temp3 <- data.table(temp3)
-
-setkey(temp, cand_id)
-setkey(temp2, cand_id)
-setkey(temp3, cand_id)
-
-cand_attr <- temp[temp2[temp3]]
-cand_attr <- cand[cand_attr]
