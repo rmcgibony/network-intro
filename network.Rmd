@@ -10,7 +10,8 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd('C:/Users/rmcgibony/Documents')
+setwd('C:/Files/code/graph-fraud-detection')
+
 ```
 
 ## Federal Election Committee Data
