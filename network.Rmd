@@ -26,9 +26,9 @@ library(igraph)
 library(visNetwork)
 
 # Download and unzip FEC data
-download.file("ftp://ftp.fec.gov/FEC/2014/cm14.zip", destfile="cm14.zip")
-download.file("ftp://ftp.fec.gov/FEC/2014/cn14.zip", destfile="cn14.zip")
-download.file("ftp://ftp.fec.gov/FEC/2014/pas214.zip", destfile="pas214.zip")
+download.file("ftp://ftp.fec.gov/FEC/2014/cm14.zip", destfile="data/cm14.zip")
+download.file("ftp://ftp.fec.gov/FEC/2014/cn14.zip", destfile="data/cn14.zip")
+download.file("ftp://ftp.fec.gov/FEC/2014/pas214.zip", destfile="data/pas214.zip")
 
 unzip('data/cm14.zip')
 unzip('data/cn14.zip')

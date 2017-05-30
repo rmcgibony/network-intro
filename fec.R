@@ -2,7 +2,7 @@ library(data.table)
 library(igraph)
 library(visNetwork)
 
-setwd('C:\Files\code\graph-fraud-detection')
+setwd('C:/Files/code/graph-fraud-detection')
 
 # Data links are from http://www.fec.gov/finance/disclosure/ftpdet.shtml
 

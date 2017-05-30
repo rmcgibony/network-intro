@@ -1,1 +1,0 @@
-This is a vignette illustrating some basic concepts of network analysis using political campaign contribution data. I presented this material at Predictive Analytics World for Government on October 18, 2016.
